@@ -3,11 +3,10 @@ import * as XLSX from 'xlsx';
 import { 
   Database, Code, Copy, CheckCircle, AlertCircle, Server, Lock, User, 
   LogOut, Play, Table as TableIcon, FileSpreadsheet, Shirt, 
-  UtensilsCrossed, Search, Loader2, Save, Unlock, Lock as LockIcon,
-  ArrowRight
+  UtensilsCrossed, Search, Loader2, Home, Save, Unlock, Lock as LockIcon
 } from 'lucide-react';
 
-// --- FUNCIÓN SQL DE SOPORTE ---
+// --- FUNCIÓN SQL DE SOPORTE (SE EJECUTA AL CONECTAR) ---
 const CREATE_FUNCTION_SQL = `
 IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[udf_decimal_a_base]') AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
 BEGIN
@@ -224,7 +223,7 @@ left join SECCIONES sec on art.DPTO=sec.DPTO and art.SECCION=sec.SECCION
 left join(SELECT sitf.[CODSECCION],STRING_AGG(sit.descripcion,',' )as impcocina
 		  FROM SITUACIONESFAMILIA sitf LEFT JOIN situaciones sit ON sitf.CODSITUACION=sit.CODSITUACION
 		  GROUP BY sitf.CODSECCION)situ on art.SECCION=situ.CODSECCION
-left join(SELECT sitf.[CODARTICULO],STRING_AGG(sit.DESCRIPCION,',')as impcocinaart
+left join(SELECT  [CODARTICULO],STRING_AGG(sit.DESCRIPCION,',')as impcocinaart
 		  FROM SITUACIONESARTICULO sitf LEFT JOIN situaciones sit ON sitf.CODSITUACION=sit.CODSITUACION
 		  GROUP BY sitf.CODARTICULO)situart on art.CODARTICULO=situart.CODARTICULO
 left join(SELECT CODARTICULO, STRING_AGG(tpf.DESCRIPCION, ',') as Categorias 
@@ -372,16 +371,14 @@ prov.NOMPROVEEDOR, art.REFPROVEEDOR,
 m.codmarca, m.DESCRIPCION, t.CODTEMPORADA, t.TEMPORADA, IMPV.IVA, PV.PBRUTO, PV.PNETO, PV.PBRUTO2, PV.PNETO2, ST.STOCK`;
 
 const App = () => {
-  // --- ESTADOS ---
-  const [step, setStep] = useState('selector'); // selector | login | main
+  const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState('');
   const [dbConfig, setDbConfig] = useState({ server: 'LOCALHOST\\SQLEXPRESS22', user: 'sa', password: '', database: 'DBFREST' });
   const [selectedProgram, setSelectedProgram] = useState('agora');
-  
   const [configs] = useState({
-    agora: { name: 'Ágora (Hostelería)', icon: UtensilsCrossed, template: AGORA_SQL_TEMPLATE, defaultDB: 'DBFREST', tariffQuery: 'SELECT * FROM TARIFASVENTA' },
-    stockagile: { name: 'StockAgile (Retail)', icon: Shirt, template: STOCKAGILE_SQL_TEMPLATE, defaultDB: 'ICGFRONT', tariffQuery: 'SELECT * FROM TARIFASVENTA' }
+    agora: { name: 'Ágora (Exportación ICG)', icon: UtensilsCrossed, template: AGORA_SQL_TEMPLATE, desc: 'Plantilla completa V2.2 con UNION', tariffQuery: 'SELECT * FROM TARIFASVENTA' },
+    stockagile: { name: 'StockAgile (Retail)', icon: Shirt, template: STOCKAGILE_SQL_TEMPLATE, desc: 'Plantilla Completa de Variantes', tariffQuery: 'SELECT * FROM TARIFASVENTA' }
   });
   
   const [selectedTariff, setSelectedTariff] = useState(1);
@@ -393,36 +390,14 @@ const App = () => {
   const [queryResults, setQueryResults] = useState(null);
   const [executionMessage, setExecutionMessage] = useState('');
 
-  // Carga inicial de preferencias
   useEffect(() => {
     const saved = localStorage.getItem('asisman_sql_config');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setDbConfig(prev => ({...prev, ...parsed, password: ''}));
-      } catch (e) { console.error(e); }
-    }
+    if (saved) setDbConfig(JSON.parse(saved));
   }, []);
 
-  // Generador de SQL (Sólo en modo Main)
-  useEffect(() => {
-    if (step !== 'main' || isExpertMode) return;
-    const conf = configs[selectedProgram];
-    if (!conf) return;
-
-    let template = conf.template.replace(/{TARIFF_ID}/g, selectedTariff);
-    const cleanName = String(selectedTariffName).replace(/'/g, "''").trim();
-    template = template.replace(/'PP PVP'/g, `'PP ${cleanName}'`)
-                    .replace(/'PA PVP'/g, `'PA ${cleanName}'`)
-                    .replace(/'PM PVP'/g, `'PM ${cleanName}'`);
-    setGeneratedSQL(template);
-  }, [selectedProgram, selectedTariff, selectedTariffName, isExpertMode, step, configs]);
-
-  // --- HANDLERS ---
-  const handleSelectProgram = (key) => {
-    setSelectedProgram(key);
-    setDbConfig(prev => ({ ...prev, database: configs[key].defaultDB }));
-    setStep('login');
+  const saveLocalConfig = () => {
+    localStorage.setItem('asisman_sql_config', JSON.stringify({ ...dbConfig, password: '' }));
+    alert("Preferencias guardadas.");
   };
 
   const handleConnect = async (e) => {
@@ -433,15 +408,10 @@ const App = () => {
       const response = await window.electronAPI.connectDB(dbConfig);
       if (response.success) {
         await window.electronAPI.executeSQL(CREATE_FUNCTION_SQL);
-        setStep('main');
-      } else {
-        setConnectError(response.message);
-      }
-    } catch (err) {
-      setConnectError(err.message);
-    } finally {
-      setIsConnecting(false);
-    }
+        setIsConnected(true);
+      } else setConnectError(response.message);
+    } catch (err) { setConnectError(err.message); }
+    finally { setIsConnecting(false); }
   };
 
   const handleExecuteSQL = async () => {
@@ -452,159 +422,107 @@ const App = () => {
       if (response.success) {
         setQueryResults(response.data);
         setExecutionMessage(`Éxito: ${response.data.length} registros extraídos.`);
-      } else {
-        setExecutionMessage(`Error SQL: ${response.message}`);
-      }
-    } catch (err) {
-      setExecutionMessage(err.message);
-    } finally {
-      setIsExecuting(false);
-    }
+      } else setExecutionMessage(`Error SQL: ${response.message}`);
+    } catch (err) { setExecutionMessage(err.message); }
+    finally { setIsExecuting(false); }
   };
 
   const handleExportExcel = () => {
     if (!queryResults) return;
     const ws = XLSX.utils.json_to_sheet(queryResults);
+    const colWidths = Object.keys(queryResults[0]).map(key => {
+        const maxLen = Math.max(key.length, ...queryResults.slice(0, 100).map(row => String(row[key] || "").length));
+        return { wch: maxLen + 2 };
+    });
+    ws['!cols'] = colWidths;
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Datos");
-    XLSX.writeFile(wb, `Export_${selectedProgram}_${selectedTariffName}.xlsx`);
+    XLSX.writeFile(wb, `Export_${selectedProgram}_${selectedTariffName.replace(/\s/g, '_')}.xlsx`);
   };
 
-  // --- RENDERIZADO CONDICIONAL ---
+  useEffect(() => {
+    if (isExpertMode) return;
+    const conf = configs[selectedProgram];
+    let template = conf.template.replace(/{TARIFF_ID}/g, selectedTariff);
+    const cleanName = String(selectedTariffName).replace(/'/g, "''").trim();
+    template = template.replace(/'PP PVP'/g, `'PP ${cleanName}'`).replace(/'PA PVP'/g, `'PA ${cleanName}'`).replace(/'PM PVP'/g, `'PM ${cleanName}'`);
+    setGeneratedSQL(template);
+  }, [selectedProgram, selectedTariff, selectedTariffName, isExpertMode]);
 
-  // PANTALLA 1: SELECTOR
-  if (step === 'selector') {
+  if (!isConnected) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="max-w-4xl w-full">
-          <div className="text-center mb-10">
-            <div className="bg-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-xl">
-              <Database className="text-white w-10 h-10" />
-            </div>
-            <h1 className="text-4xl font-black text-slate-800 uppercase tracking-tighter">Asisman Exporter</h1>
-            <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-2 italic">Seleccione el Programa de Origen</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {Object.entries(configs).map(([key, conf]) => (
-              <button key={key} onClick={() => handleSelectProgram(key)} className="group bg-white p-10 rounded-[2.5rem] border-4 border-transparent hover:border-blue-500 shadow-2xl transition-all flex flex-col items-center">
-                <div className="p-6 bg-slate-50 rounded-2xl group-hover:bg-blue-50 mb-4 transition-colors">
-                  <conf.icon size={54} className="text-slate-300 group-hover:text-blue-600" />
-                </div>
-                <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">{conf.name}</h2>
-                <div className="mt-4 flex items-center gap-2 text-blue-600 font-bold text-xs uppercase opacity-0 group-hover:opacity-100 transition-all">
-                    Configurar Conexión <ArrowRight size={16} />
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // PANTALLA 2: CONEXIÓN
-  if (step === 'login') {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white max-w-md w-full rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200">
-          <div className="bg-blue-600 p-8 text-center text-white relative">
-            <button onClick={() => setStep('selector')} className="absolute left-6 top-8 text-white/50 hover:text-white text-xs font-black uppercase tracking-tighter">Atrás</button>
-            <Server className="w-12 h-12 mx-auto mb-3 opacity-90" />
-            <h1 className="text-xl font-black uppercase tracking-tight">Acceso SQL: {configs[selectedProgram]?.name}</h1>
-          </div>
-          <form onSubmit={handleConnect} className="p-10 space-y-5">
-            {connectError && <div className="bg-red-50 text-red-600 p-4 rounded-xl text-[10px] font-black uppercase border border-red-100 text-center">{connectError}</div>}
+        <div className="bg-white max-w-md w-full rounded-3xl shadow-xl overflow-hidden border">
+          <div className="bg-blue-600 p-6 text-center text-white"><Database className="w-16 h-16 mx-auto mb-3" /><h1 className="text-2xl font-bold tracking-tight">Asisman Exporter</h1></div>
+          <form onSubmit={handleConnect} className="p-8 space-y-4">
+            {connectError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs border border-red-100 font-bold">{connectError}</div>}
             <div className="space-y-4">
-                <div className="group border-b-2 border-slate-100 focus-within:border-blue-500 transition-all">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Servidor / Instancia</label>
-                    <input type="text" className="w-full pb-2 outline-none font-bold text-slate-700 bg-transparent" value={dbConfig.server} onChange={(e) => setDbConfig({...dbConfig, server: e.target.value})} />
-                </div>
-                <div className="group border-b-2 border-slate-100 focus-within:border-blue-500 transition-all">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Nombre Base de Datos</label>
-                    <input type="text" className="w-full pb-2 outline-none font-bold text-slate-700 bg-transparent" value={dbConfig.database} onChange={(e) => setDbConfig({...dbConfig, database: e.target.value})} />
-                </div>
+                <input type="text" className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="Servidor SQL" value={dbConfig.server} onChange={(e) => setDbConfig({...dbConfig, server: e.target.value})} />
+                <input type="text" className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="Base de Datos" value={dbConfig.database} onChange={(e) => setDbConfig({...dbConfig, database: e.target.value})} />
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="border-b-2 border-slate-100">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">User</label>
-                        <input type="text" className="w-full pb-2 outline-none font-bold text-slate-700 bg-transparent" value={dbConfig.user} onChange={(e) => setDbConfig({...dbConfig, user: e.target.value})} />
-                    </div>
-                    <div className="border-b-2 border-slate-100">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Password</label>
-                        <input type="password" name="password" className="w-full pb-2 outline-none font-bold text-slate-700 bg-transparent" value={dbConfig.password} onChange={(e) => setDbConfig({...dbConfig, password: e.target.value})} />
-                    </div>
+                    <input type="text" className="p-3 border rounded-lg" placeholder="Usuario" value={dbConfig.user} onChange={(e) => setDbConfig({...dbConfig, user: e.target.value})} />
+                    <input type="password" name="password" className="p-3 border rounded-lg" placeholder="Contraseña" value={dbConfig.password} onChange={(e) => setDbConfig({...dbConfig, password: e.target.value})} />
                 </div>
             </div>
-            <button type="submit" disabled={isConnecting} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black hover:bg-blue-700 shadow-lg shadow-blue-100 uppercase tracking-widest transition-all">
-                {isConnecting ? <Loader2 className="animate-spin mx-auto" /> : "Establecer Conexión"}
-            </button>
-            <button type="button" onClick={() => {localStorage.setItem('asisman_sql_config', JSON.stringify({...dbConfig, password: ''})); alert("Preferencias guardadas");}} className="w-full py-2 bg-slate-50 text-slate-400 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-colors"><Save size={12} className="inline mr-1"/> Recordar Datos Servidor</button>
+            <button type="submit" disabled={isConnecting} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold flex justify-center items-center gap-2 hover:bg-blue-700 transition-colors">{isConnecting ? <Loader2 className="animate-spin" /> : "CONECTAR A SQL SERVER"}</button>
+            <button type="button" onClick={saveLocalConfig} className="w-full py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-black flex justify-center items-center gap-2 hover:bg-slate-200 uppercase tracking-widest"><Save size={14}/> Recordar Servidor</button>
           </form>
         </div>
       </div>
     );
   }
 
-  // PANTALLA 3: PANEL PRINCIPAL (MAIN)
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans">
-      <header className="max-w-7xl mx-auto mb-8 flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2 font-black text-slate-800 uppercase text-xs">
-            <Server size={18} className="text-blue-600" /> {dbConfig.server} <span className="text-slate-300">/</span> {dbConfig.database}
-          </div>
-          {/* INDICADOR VISUAL */}
-          <div className="flex items-center gap-2 px-4 py-1.5 bg-green-50 rounded-full border border-green-200">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-600"></span>
-            </span>
-            <span className="text-[10px] font-black text-green-700 uppercase tracking-widest">Motor Activo</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest italic">
-                {selectedProgram === 'agora' ? <UtensilsCrossed size={12}/> : <Shirt size={12}/>} {selectedProgram}
-            </div>
-            <button onClick={() => setStep('selector')} className="text-red-600 font-black px-4 py-2 hover:bg-red-50 rounded-xl text-[10px] tracking-widest uppercase italic">Cerrar Sesión</button>
-        </div>
+      <header className="max-w-7xl mx-auto mb-8 flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <div className="flex items-center gap-2 font-bold text-slate-800 uppercase text-sm tracking-tight"><Server size={20} className="text-blue-600" /> {dbConfig.server} <span className="text-slate-300">|</span> {dbConfig.database}</div>
+        <button onClick={() => setIsConnected(false)} className="text-red-600 font-black px-4 py-2 hover:bg-red-50 rounded-lg flex items-center gap-2 transition-all uppercase text-xs tracking-widest"><LogOut size={16} /> Cerrar Sesión</button>
       </header>
 
       <div className="max-w-7xl mx-auto grid grid-cols-12 gap-8">
         <div className="col-span-4 space-y-6">
-          <div className="bg-white p-8 rounded-[2rem] border shadow-sm border-slate-200">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Search size={14}/> 1. Seleccione Tarifa</h2>
-                <button onClick={async () => {
-                    const res = await window.electronAPI.executeSQL(configs[selectedProgram].tariffQuery);
-                    if (res.success) setAvailableTariffs(res.data.map(r => ({ id: r.IDTARIFAV || r.CODTARIFA || 0, nombre: r.DESCRIPCION || r.NOMBRE || 'Tarifa' })));
-                }} className="text-blue-600 text-[10px] font-black px-4 py-2 bg-blue-50 rounded-full hover:bg-blue-100 uppercase transition-all tracking-tighter">Listar ICG</button>
-            </div>
-            <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-              {availableTariffs.length > 0 ? availableTariffs.map(t => (
-                <button key={t.id} onClick={() => {setSelectedTariff(t.id); setSelectedTariffName(t.nombre);}} className={`p-4 text-xs font-black rounded-xl border text-left transition-all uppercase tracking-tighter ${selectedTariff === t.id ? "bg-blue-600 text-white border-blue-600 shadow-lg" : "bg-white border-slate-100 text-slate-500 hover:border-blue-200"}`}>{t.nombre}</button>
-              )) : (
-                <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
-                  <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest leading-relaxed opacity-50">Pulse el botón<br/>de arriba</p>
-                </div>
-              )}
+          <div className="bg-white p-6 rounded-xl border shadow-sm">
+            <h2 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest flex items-center gap-2"><CheckCircle size={12}/> 1. Origen de Datos</h2>
+            <div className="space-y-2">
+              {Object.entries(configs).map(([key, conf]) => (
+                <button key={key} onClick={() => {setSelectedProgram(key); setAvailableTariffs([]); setSelectedTariffName('PVP');}} className={`w-full p-4 rounded-xl border-2 text-left flex items-center gap-4 transition-all ${selectedProgram === key ? 'border-blue-600 bg-blue-50 shadow-sm' : 'border-slate-100 hover:border-slate-200'}`}>
+                  <div className={`p-2 rounded-full ${selectedProgram === key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}><conf.icon size={18} /></div>
+                  <span className={`font-bold text-sm ${selectedProgram === key ? 'text-blue-700' : 'text-slate-600'}`}>{conf.name}</span>
+                </button>
+              ))}
             </div>
           </div>
 
-          <button onClick={handleExecuteSQL} disabled={isExecuting} className={`w-full py-6 rounded-[2rem] font-black text-white shadow-2xl flex justify-center items-center gap-3 transition-all transform active:scale-95 uppercase tracking-widest ${isExecuting ? 'bg-slate-400' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'}`}>
-            {isExecuting ? <Loader2 className="animate-spin mx-auto" /> : <><Play fill="currentColor" size={20}/> Ejecutar SQL</>}
+          <div className="bg-white p-6 rounded-xl border shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><CheckCircle size={12}/> 2. Tarifa</h2>
+                <button onClick={async () => {
+                    const res = await window.electronAPI.executeSQL(configs[selectedProgram].tariffQuery);
+                    if (res.success) setAvailableTariffs(res.data.map(r => ({ id: r.IDTARIFAV || r.CODTARIFA || 0, nombre: r.DESCRIPCION || r.NOMBRE || 'Tarifa' })));
+                }} className="text-blue-600 text-[10px] font-black px-3 py-1 bg-blue-50 rounded-full hover:bg-blue-100 transition-all uppercase tracking-tighter">Cargar Listado</button>
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+              {availableTariffs.map(t => (
+                <button key={t.id} onClick={() => {setSelectedTariff(t.id); setSelectedTariffName(t.nombre);}} className={`p-3 text-xs font-bold rounded-lg border text-left transition-all ${selectedTariff === t.id ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-white border-slate-200 text-slate-500 hover:border-blue-300"}`}>{t.nombre}</button>
+              ))}
+            </div>
+          </div>
+
+          <button onClick={handleExecuteSQL} disabled={isExecuting} className={`w-full py-5 rounded-xl font-black text-white shadow-xl flex justify-center items-center gap-2 transition-all transform active:scale-95 ${isExecuting ? 'bg-slate-400' : 'bg-emerald-600 hover:bg-emerald-700 hover:shadow-emerald-200'}`}>
+            {isExecuting ? <div className="flex flex-col items-center"><Loader2 className="animate-spin" /> <span className="text-[10px] mt-1 tracking-widest">EJECUTANDO CONSULTA...</span></div> : <><Play fill="currentColor" size={20}/> EJECUTAR EXTRACCIÓN</>}
           </button>
         </div>
 
         <div className="col-span-8 space-y-6">
-          <div className="bg-slate-900 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col h-[320px] border-8 border-slate-800">
-            <div className="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center">
-                <div className="flex items-center gap-2 text-white font-mono text-[10px] font-black uppercase tracking-widest"><Code size={16} className="text-blue-400" /> Script SQL Preparado</div>
-                <button onClick={() => setIsExpertMode(!isExpertMode)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase flex items-center gap-2 transition-all ${isExpertMode ? "bg-orange-500 text-white shadow-lg" : "bg-slate-700 text-slate-400"}`}>
-                    {isExpertMode ? <Unlock size={14}/> : <LockIcon size={14}/>} {isExpertMode ? 'Modo Experto' : 'Solo Lectura'}
+          <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[380px] border border-slate-800">
+            <div className="bg-slate-800 p-3 border-b border-slate-700 flex justify-between items-center">
+                <div className="flex items-center gap-2 text-white font-mono text-[10px] font-black uppercase tracking-widest"><Code size={14} className="text-blue-400" /> Script SQL Generado</div>
+                <button onClick={() => setIsExpertMode(!isExpertMode)} className={`px-4 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-2 transition-all shadow-sm ${isExpertMode ? "bg-orange-500 text-white" : "bg-slate-700 text-slate-400 hover:bg-slate-600"}`}>
+                    {isExpertMode ? <Unlock size={12}/> : <LockIcon size={12}/>} {isExpertMode ? 'Modo Experto Activado' : 'Editor Bloqueado'}
                 </button>
             </div>
             <textarea 
-                className={`flex-1 p-8 font-mono text-[11px] outline-none resize-none transition-all leading-relaxed ${isExpertMode ? "bg-slate-800 text-white" : "bg-slate-900 text-emerald-400 opacity-80"}`}
+                className={`flex-1 p-6 font-mono text-[11px] outline-none resize-none transition-all leading-relaxed ${isExpertMode ? "bg-slate-800 text-white shadow-inner" : "bg-slate-900 text-emerald-400 opacity-80"}`}
                 value={generatedSQL}
                 readOnly={!isExpertMode}
                 onChange={(e) => isExpertMode && setGeneratedSQL(e.target.value)}
@@ -612,32 +530,29 @@ const App = () => {
             />
           </div>
           
-          {executionMessage && (
-            <div className="p-5 bg-blue-600 text-white rounded-2xl text-[10px] font-black flex items-center gap-3 uppercase tracking-widest shadow-xl shadow-blue-100 animate-in fade-in">
-              <CheckCircle size={20}/> {executionMessage}
-            </div>
-          )}
+          {executionMessage && <div className="p-4 bg-blue-50 border border-blue-100 text-blue-700 rounded-xl text-xs font-black flex items-center gap-3 uppercase tracking-tighter shadow-sm animate-in fade-in"><CheckCircle size={18}/> {executionMessage}</div>}
 
           {queryResults && (
-            <div className="bg-white rounded-[2rem] border shadow-2xl overflow-hidden border-slate-200">
-              <div className="p-5 border-b flex justify-between items-center bg-slate-50">
-                <span className="font-black text-slate-700 text-xs uppercase tracking-widest flex items-center gap-2"><TableIcon size={18} className="text-blue-600"/> Resultados Obtenidos ({queryResults.length})</span>
-                <button onClick={handleExportExcel} className="bg-emerald-600 text-white px-6 py-3 rounded-xl text-[10px] font-black flex items-center gap-2 hover:bg-emerald-700 uppercase tracking-widest transition-all shadow-md"><FileSpreadsheet size={16}/> Generar Excel</button>
+            <div className="bg-white rounded-xl border shadow-xl overflow-hidden animate-in slide-in-from-bottom-4">
+              <div className="p-4 border-b flex justify-between items-center bg-slate-50">
+                <span className="font-black text-slate-700 text-xs uppercase tracking-widest flex items-center gap-2"><TableIcon size={16} className="text-blue-600"/> Resultados ({queryResults.length})</span>
+                <button onClick={handleExportExcel} className="bg-emerald-600 text-white px-5 py-2.5 rounded-lg text-[10px] font-black flex items-center gap-2 hover:bg-emerald-700 shadow-md transition-all active:scale-95 uppercase tracking-widest"><FileSpreadsheet size={14}/> Generar Excel Pro</button>
               </div>
-              <div className="overflow-x-auto max-h-[400px] custom-scrollbar font-bold">
+              <div className="overflow-x-auto max-h-[400px] custom-scrollbar">
                 <table className="w-full text-[10px] text-left border-collapse">
-                  <thead className="bg-slate-100 sticky top-0 font-black text-slate-500 uppercase border-b z-10 shadow-sm">
-                    <tr>{Object.keys(queryResults[0]).map(k => <th key={k} className="p-5 whitespace-nowrap">{k}</th>)}</tr>
+                  <thead className="bg-slate-100 sticky top-0 font-black text-slate-500 uppercase border-b shadow-sm z-10">
+                    <tr>{Object.keys(queryResults[0]).map(k => <th key={k} className="p-4 whitespace-nowrap">{k}</th>)}</tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {queryResults.slice(0, 50).map((row, i) => (
-                      <tr key={i} className="hover:bg-blue-50/30 transition-colors text-slate-600 uppercase tracking-tighter">
-                        {Object.values(row).map((v, ci) => <td key={ci} className="p-5 whitespace-nowrap border-r border-slate-50/50">{v === null ? "" : String(v)}</td>)}
+                      <tr key={i} className="hover:bg-blue-50/50 transition-colors text-slate-600 font-medium">
+                        {Object.values(row).map((v, ci) => <td key={ci} className="p-4 whitespace-nowrap border-r border-slate-50/50">{v === null ? "" : String(v)}</td>)}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {queryResults.length > 50 && <div className="p-3 bg-slate-50 text-center text-[10px] text-slate-400 font-bold border-t italic">Previsualización limitada a 50 filas para rendimiento óptimo.</div>}
             </div>
           )}
         </div>
