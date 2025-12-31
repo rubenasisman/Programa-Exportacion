@@ -4,7 +4,7 @@ import {
   Database, Code, Copy, CheckCircle, AlertCircle, Server, Lock, User, 
   LogOut, Play, Table as TableIcon, FileSpreadsheet, Shirt, 
   UtensilsCrossed, Search, Loader2, Save, Unlock, Lock as LockIcon,
-  ArrowRight
+  ArrowRight, Clock, History, Trash2
 } from 'lucide-react';
 
 // --- FUNCIÓN SQL DE SOPORTE ---
@@ -281,20 +281,16 @@ CASE
 END as 'Código de barras',
 case
 	when M.DESCRIPCION is null then ''
-	else M.DESCRIPCION
-end AS 'Marca (nombre)',
+	else M.DESCRIPCION end AS 'Marca (nombre)',
 case
 	when cast(m.CODMARCA as varchar) is null then ''
-	else cast(m.CODMARCA as varchar)
-end as 'Marca (código)',
+	else cast(m.CODMARCA as varchar) end as 'Marca (código)',
 case
 	when T.TEMPORADA is null then ''
-	else T.TEMPORADA
-end as 'Temporada (nombre)',
+	else T.TEMPORADA end as 'Temporada (nombre)',
 case
 	when cast(T.CODTEMPORADA as varchar) is null then ''
-	else cast(T.CODTEMPORADA as varchar)
-end as 'Temporada (código)',
+	else cast(T.CODTEMPORADA as varchar) end as 'Temporada (código)',
 case
 	when d.DESCRIPCION is null then '~NO_DPTO'
 	ELSE trim(REPLACE(replace(D.DESCRIPCION,'DEPARTAMENTO ',''),'DPTO ',''))
@@ -331,8 +327,7 @@ END as 'Precio descuento con impuestos (variante)',
 IMPV.IVA as 'Tipo de impuesto',
 case
 	when ST.STOCK is null then 0
-	else ST.STOCK
-end as 'Existencias',
+	else ST.STOCK end as 'Existencias',
 case
 	when art.DESCRIPCION = '' or art.DESCRIPCION is null then '~NO_NAME'
 	ELSE TRIM(REPLACE(art.DESCRIPCION, '"', ''))
@@ -373,7 +368,7 @@ m.codmarca, m.DESCRIPCION, t.CODTEMPORADA, t.TEMPORADA, IMPV.IVA, PV.PBRUTO, PV.
 
 const App = () => {
   // --- ESTADOS ---
-  const [step, setStep] = useState('selector'); // selector | login | main
+  const [step, setStep] = useState('selector'); 
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState('');
   const [dbConfig, setDbConfig] = useState({ server: 'LOCALHOST\\SQLEXPRESS22', user: 'sa', password: '', database: 'DBFREST' });
@@ -392,15 +387,21 @@ const App = () => {
   const [isExecuting, setIsExecuting] = useState(false);
   const [queryResults, setQueryResults] = useState(null);
   const [executionMessage, setExecutionMessage] = useState('');
+  const [history, setHistory] = useState([]);
 
-  // Carga inicial de preferencias
+  // Carga inicial
   useEffect(() => {
-    const saved = localStorage.getItem('asisman_sql_config');
-    if (saved) {
+    const savedConfig = localStorage.getItem('asisman_sql_config');
+    if (savedConfig) {
       try {
-        const parsed = JSON.parse(saved);
+        const parsed = JSON.parse(savedConfig);
         setDbConfig(prev => ({...prev, ...parsed, password: ''}));
       } catch (e) { console.error(e); }
+    }
+
+    const savedHistory = localStorage.getItem('asisman_export_history');
+    if (savedHistory) {
+      try { setHistory(JSON.parse(savedHistory)); } catch (e) { console.error(e); }
     }
   }, []);
 
@@ -428,9 +429,39 @@ const App = () => {
     setSelectedTariffName('PVP');
   };
 
+  const addToHistory = (tariffName) => {
+    const newItem = {
+      id: Date.now(),
+      program: selectedProgram,
+      programName: configs[selectedProgram].name,
+      tariff: tariffName,
+      date: new Date().toLocaleString(),
+      database: dbConfig.database
+    };
+    const updatedHistory = [newItem, ...history].slice(0, 50);
+    setHistory(updatedHistory);
+    localStorage.setItem('asisman_export_history', JSON.stringify(updatedHistory));
+  };
+
+  // --- LÓGICA VACIAR HISTORIAL ---
+  const clearHistory = (scope = 'all') => {
+    if (scope === 'all') {
+      if (window.confirm("¿Deseas vaciar TODO el historial de búsquedas recientes?")) {
+        setHistory([]);
+        localStorage.removeItem('asisman_export_history');
+      }
+    } else {
+      if (window.confirm(`¿Vaciar las búsquedas recientes de ${configs[selectedProgram].name}?`)) {
+        const filteredHistory = history.filter(item => item.program !== selectedProgram);
+        setHistory(filteredHistory);
+        localStorage.setItem('asisman_export_history', JSON.stringify(filteredHistory));
+      }
+    }
+  };
+
   // --- HANDLERS ---
   const handleSelectProgram = (key) => {
-    resetAppSession(); // Limpieza al volver al selector
+    resetAppSession(); 
     setSelectedProgram(key);
     setDbConfig(prev => ({ ...prev, database: configs[key].defaultDB, password: '' }));
     setStep('login');
@@ -463,6 +494,7 @@ const App = () => {
       if (response.success) {
         setQueryResults(response.data);
         setExecutionMessage(`Éxito: ${response.data.length} registros extraídos.`);
+        addToHistory(selectedTariffName);
       } else {
         setExecutionMessage(`Error SQL: ${response.message}`);
       }
@@ -481,20 +513,67 @@ const App = () => {
     XLSX.writeFile(wb, `Export_${selectedProgram}_${selectedTariffName}.xlsx`);
   };
 
-  // --- RENDERIZADO ---
+  // --- COMPONENTE HISTORIAL ---
+  const RenderHistory = ({ filterByProgram }) => {
+    const displayHistory = filterByProgram 
+      ? history.filter(item => item.program === selectedProgram).slice(0, 5)
+      : history.slice(0, 5);
+
+    if (displayHistory.length === 0) return null;
+
+    return (
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2 text-slate-400">
+            <Clock size={16} />
+            <h3 className="text-[10px] font-black uppercase tracking-widest">
+              {filterByProgram ? `Búsquedas Recientes: ${configs[selectedProgram].name}` : "Búsquedas Recientes Globales"}
+            </h3>
+          </div>
+          <button 
+            onClick={() => clearHistory(filterByProgram ? 'program' : 'all')}
+            className="flex items-center gap-1.5 px-3 py-1 text-[9px] font-black text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all uppercase tracking-tighter group"
+          >
+            <Trash2 size={12} className="group-hover:scale-110 transition-transform"/>
+            Limpiar Historial
+          </button>
+        </div>
+        <div className="space-y-2">
+          {displayHistory.map((item) => (
+            <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group hover:border-blue-200 transition-all">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white rounded-lg shadow-sm group-hover:text-blue-600 transition-colors">
+                  {item.program === 'agora' ? <UtensilsCrossed size={14}/> : <Shirt size={14}/>}
+                </div>
+                <div>
+                  <p className="text-xs font-black text-slate-700 uppercase tracking-tight">{item.tariff}</p>
+                  <p className="text-[9px] text-slate-400 font-bold uppercase">{item.date} • {item.database}</p>
+                </div>
+              </div>
+              {!filterByProgram && (
+                 <span className="text-[8px] font-black px-2 py-1 bg-slate-200 text-slate-500 rounded-md uppercase">{item.program}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // --- RENDERS ---
 
   if (step === 'selector') {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4 font-sans">
         <div className="max-w-4xl w-full">
           <div className="text-center mb-10">
             <div className="bg-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-xl">
               <Database className="text-white w-10 h-10" />
             </div>
-            <h1 className="text-4xl font-black text-slate-800 uppercase tracking-tighter">Asisman Exporter</h1>
-            <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-2 italic">Seleccione el Programa de Origen</p>
+            <h1 className="text-4xl font-black text-slate-800 uppercase tracking-tighter">Exportardor Asisman</h1>
+            <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-2 italic">Seleccione el Programa de Destino</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             {Object.entries(configs).map(([key, conf]) => (
               <button key={key} onClick={() => handleSelectProgram(key)} className="group bg-white p-10 rounded-[2.5rem] border-4 border-transparent hover:border-blue-500 shadow-2xl transition-all flex flex-col items-center">
                 <div className="p-6 bg-slate-50 rounded-2xl group-hover:bg-blue-50 mb-4 transition-colors">
@@ -507,6 +586,9 @@ const App = () => {
               </button>
             ))}
           </div>
+          <div className="max-w-md mx-auto">
+            <RenderHistory filterByProgram={false} />
+          </div>
         </div>
       </div>
     );
@@ -514,27 +596,27 @@ const App = () => {
 
   if (step === 'login') {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans">
         <div className="bg-white max-w-md w-full rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200">
           <div className="bg-blue-600 p-8 text-center text-white relative">
             <button onClick={() => { resetAppSession(); setStep('selector'); }} className="absolute left-6 top-8 text-white/50 hover:text-white text-xs font-black uppercase tracking-tighter">Atrás</button>
             <Server className="w-12 h-12 mx-auto mb-3 opacity-90" />
-            <h1 className="text-xl font-black uppercase tracking-tight">Acceso SQL: {configs[selectedProgram]?.name}</h1>
+            <h1 className="text-xl font-black uppercase tracking-tight">Conexión a BD:</h1>
           </div>
           <form onSubmit={handleConnect} className="p-10 space-y-5">
             {connectError && <div className="bg-red-50 text-red-600 p-4 rounded-xl text-[10px] font-black uppercase border border-red-100 text-center">{connectError}</div>}
             <div className="space-y-4">
                 <div className="group border-b-2 border-slate-100 focus-within:border-blue-500 transition-all">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Servidor / Instancia</label>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Servidor \ Instancia</label>
                     <input type="text" className="w-full pb-2 outline-none font-bold text-slate-700 bg-transparent" value={dbConfig.server} onChange={(e) => setDbConfig({...dbConfig, server: e.target.value})} />
                 </div>
                 <div className="group border-b-2 border-slate-100 focus-within:border-blue-500 transition-all">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Nombre Base de Datos</label>
                     <input type="text" className="w-full pb-2 outline-none font-bold text-slate-700 bg-transparent" value={dbConfig.database} onChange={(e) => setDbConfig({...dbConfig, database: e.target.value})} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4 font-black">
                     <div className="border-b-2 border-slate-100">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">User</label>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Usuario</label>
                         <input type="text" className="w-full pb-2 outline-none font-bold text-slate-700 bg-transparent" value={dbConfig.user} onChange={(e) => setDbConfig({...dbConfig, user: e.target.value})} />
                     </div>
                     <div className="border-b-2 border-slate-100">
@@ -647,6 +729,9 @@ const App = () => {
               </div>
             </div>
           )}
+
+          {/* HISTORIAL FILTRADO AL FINAL */}
+          <RenderHistory filterByProgram={true} />
         </div>
       </div>
     </div>
