@@ -30,7 +30,7 @@ BEGIN
     END')
 END`;
 
-// --- PLANTILLA SQL ÁGORA (V2.2 ÍNTEGRA) ---
+// --- PLANTILLA SQL ÁGORA (V2.2 ÍNTEGRA - SIN RECORTES) ---
 const AGORA_SQL_TEMPLATE = `DECLARE @IDTAFVENTA INT = {TARIFF_ID};
 
 SELECT distinct
@@ -97,7 +97,7 @@ end as 'Texto Botón',
 case 
 	when art.ORDEN!=0 AND pv1.CODFORMATO=0 and situart.impcocinaart is not null then situart.impcocinaart
 	when art.ORDEN!=0 AND pv1.CODFORMATO=0 and situart.impcocinaart is null and situ.impcocina is not null then situ.impcocina 
-	when art.ORDEN!=0 AND pv1.CODFORMATO=0 and situart.impcocinaart is null and situ.impcocina null then 'SIN SITUACION'
+	when art.ORDEN!=0 AND pv1.CODFORMATO=0 and situart.impcocinaart is null and situ.impcocina is null then 'SIN SITUACION'
 else '' end as 'Tipo de Preparación',
 case 
 	when pv1.CODFORMATO=0 and art.ORDEN=1 then 'PRIMEROS' 
@@ -257,6 +257,7 @@ WHERE ((pv1.IDTARIFAV=@IDTAFVENTA and PV1.DESCATALOGADO=0))
 							)
 ORDER BY Producto`;
 
+// --- PLANTILLA SQL STOCKAGILE (ÍNTEGRA) ---
 const STOCKAGILE_SQL_TEMPLATE = `DECLARE @IDTAFVENTA INT = {TARIFF_ID};
 
 select distinct
@@ -528,7 +529,7 @@ const App = () => {
     <footer className="max-w-7xl mx-auto w-full mt-auto py-6 text-center border-t border-slate-200/60">
         <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.5em] flex items-center justify-center gap-2">
           <Terminal size={12} className="text-blue-500" />
-          Software diseñado y programado por Rubén Aparicio Robles • © 2025 Asisman
+          Software diseñado y programado por [Tu Nombre] • © 2025 Asisman
         </p>
     </footer>
   );
@@ -621,7 +622,7 @@ const App = () => {
             <div className="bg-blue-600 p-8 text-center text-white relative">
               <button onClick={() => { resetAppSession(); setStep('selector'); }} className="absolute left-6 top-8 text-white/50 hover:text-white text-xs font-black uppercase tracking-tighter">Atrás</button>
               <Server className="w-12 h-12 mx-auto mb-3 opacity-90" />
-              <h1 className="text-xl font-black uppercase tracking-tight leading-none">Conexión a BD</h1>
+              <h1 className="text-xl font-black uppercase tracking-tight leading-none">Acceso SQL Motor</h1>
             </div>
             <form onSubmit={handleConnect} className="p-10 space-y-5">
               {connectError && <div className="bg-red-50 text-red-600 p-4 rounded-xl text-[10px] font-black uppercase border border-red-100 text-center">{connectError}</div>}
