@@ -404,7 +404,7 @@ const App = () => {
     }
   }, []);
 
-  // Generador de SQL (Sólo en modo Main)
+  // Generador de SQL
   useEffect(() => {
     if (step !== 'main' || isExpertMode) return;
     const conf = configs[selectedProgram];
@@ -418,10 +418,21 @@ const App = () => {
     setGeneratedSQL(template);
   }, [selectedProgram, selectedTariff, selectedTariffName, isExpertMode, step, configs]);
 
+  // --- LÓGICA DE LIMPIEZA TOTAL ---
+  const resetAppSession = () => {
+    setDbConfig(prev => ({...prev, password: ''}));
+    setAvailableTariffs([]);
+    setQueryResults(null);
+    setExecutionMessage('');
+    setSelectedTariff(1);
+    setSelectedTariffName('PVP');
+  };
+
   // --- HANDLERS ---
   const handleSelectProgram = (key) => {
+    resetAppSession(); // Limpieza al volver al selector
     setSelectedProgram(key);
-    setDbConfig(prev => ({ ...prev, database: configs[key].defaultDB }));
+    setDbConfig(prev => ({ ...prev, database: configs[key].defaultDB, password: '' }));
     setStep('login');
   };
 
@@ -470,9 +481,8 @@ const App = () => {
     XLSX.writeFile(wb, `Export_${selectedProgram}_${selectedTariffName}.xlsx`);
   };
 
-  // --- RENDERIZADO CONDICIONAL ---
+  // --- RENDERIZADO ---
 
-  // PANTALLA 1: SELECTOR
   if (step === 'selector') {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
@@ -502,13 +512,12 @@ const App = () => {
     );
   }
 
-  // PANTALLA 2: CONEXIÓN
   if (step === 'login') {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white max-w-md w-full rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200">
           <div className="bg-blue-600 p-8 text-center text-white relative">
-            <button onClick={() => setStep('selector')} className="absolute left-6 top-8 text-white/50 hover:text-white text-xs font-black uppercase tracking-tighter">Atrás</button>
+            <button onClick={() => { resetAppSession(); setStep('selector'); }} className="absolute left-6 top-8 text-white/50 hover:text-white text-xs font-black uppercase tracking-tighter">Atrás</button>
             <Server className="w-12 h-12 mx-auto mb-3 opacity-90" />
             <h1 className="text-xl font-black uppercase tracking-tight">Acceso SQL: {configs[selectedProgram]?.name}</h1>
           </div>
@@ -544,7 +553,6 @@ const App = () => {
     );
   }
 
-  // PANTALLA 3: PANEL PRINCIPAL (MAIN)
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans">
       <header className="max-w-7xl mx-auto mb-8 flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
@@ -552,7 +560,6 @@ const App = () => {
           <div className="flex items-center gap-2 font-black text-slate-800 uppercase text-xs">
             <Server size={18} className="text-blue-600" /> {dbConfig.server} <span className="text-slate-300">/</span> {dbConfig.database}
           </div>
-          {/* INDICADOR VISUAL */}
           <div className="flex items-center gap-2 px-4 py-1.5 bg-green-50 rounded-full border border-green-200">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -565,7 +572,7 @@ const App = () => {
             <div className="flex items-center gap-2 px-3 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest italic">
                 {selectedProgram === 'agora' ? <UtensilsCrossed size={12}/> : <Shirt size={12}/>} {selectedProgram}
             </div>
-            <button onClick={() => setStep('selector')} className="text-red-600 font-black px-4 py-2 hover:bg-red-50 rounded-xl text-[10px] tracking-widest uppercase italic">Cerrar Sesión</button>
+            <button onClick={() => { resetAppSession(); setStep('selector'); }} className="text-red-600 font-black px-4 py-2 hover:bg-red-50 rounded-xl text-[10px] tracking-widest uppercase italic">Cerrar Sesión</button>
         </div>
       </header>
 
@@ -577,14 +584,14 @@ const App = () => {
                 <button onClick={async () => {
                     const res = await window.electronAPI.executeSQL(configs[selectedProgram].tariffQuery);
                     if (res.success) setAvailableTariffs(res.data.map(r => ({ id: r.IDTARIFAV || r.CODTARIFA || 0, nombre: r.DESCRIPCION || r.NOMBRE || 'Tarifa' })));
-                }} className="text-blue-600 text-[10px] font-black px-4 py-2 bg-blue-50 rounded-full hover:bg-blue-100 uppercase transition-all tracking-tighter">Listar ICG</button>
+                }} className="text-blue-600 text-[10px] font-black px-4 py-2 bg-blue-50 rounded-full hover:bg-blue-100 uppercase transition-all tracking-tighter">BUSCAR</button>
             </div>
-            <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar font-black text-xs">
               {availableTariffs.length > 0 ? availableTariffs.map(t => (
-                <button key={t.id} onClick={() => {setSelectedTariff(t.id); setSelectedTariffName(t.nombre);}} className={`p-4 text-xs font-black rounded-xl border text-left transition-all uppercase tracking-tighter ${selectedTariff === t.id ? "bg-blue-600 text-white border-blue-600 shadow-lg" : "bg-white border-slate-100 text-slate-500 hover:border-blue-200"}`}>{t.nombre}</button>
+                <button key={t.id} onClick={() => {setSelectedTariff(t.id); setSelectedTariffName(t.nombre);}} className={`p-4 rounded-xl border text-left transition-all uppercase tracking-tighter ${selectedTariff === t.id ? "bg-blue-600 text-white border-blue-600 shadow-lg" : "bg-white border-slate-100 text-slate-500 hover:border-blue-200"}`}>{t.nombre}</button>
               )) : (
                 <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
-                  <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest leading-relaxed opacity-50">Pulse el botón<br/>de arriba</p>
+                  <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest leading-relaxed opacity-50">Pulse el botón<br/>BUSCAR</p>
                 </div>
               )}
             </div>
