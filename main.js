@@ -10,6 +10,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     title: "Gestor de Exportaciones Asisman",
+    author: "Rubén Aparicio Robles",
     icon: path.join(__dirname, 'public/logoPequeno.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
