@@ -4,7 +4,7 @@ import {
   Database, Code, Copy, CheckCircle, AlertCircle, Server, Lock, User, 
   LogOut, Play, Table as TableIcon, FileSpreadsheet, Shirt, 
   UtensilsCrossed, Search, Loader2, Save, Unlock, Lock as LockIcon,
-  ArrowRight, Clock, History, Trash2
+  ArrowRight, Clock, History, Trash2, Tag
 } from 'lucide-react';
 
 // --- FUNCIÓN SQL DE SOPORTE ---
@@ -257,7 +257,6 @@ WHERE ((pv1.IDTARIFAV=@IDTAFVENTA and PV1.DESCATALOGADO=0))
 							)
 ORDER BY Producto`;
 
-// --- PLANTILLA SQL STOCKAGILE (ÍNTEGRA) ---
 const STOCKAGILE_SQL_TEMPLATE = `DECLARE @IDTAFVENTA INT = {TARIFF_ID};
 
 select distinct
@@ -379,8 +378,9 @@ const App = () => {
     stockagile: { name: 'StockAgile (Retail)', icon: Shirt, template: STOCKAGILE_SQL_TEMPLATE, defaultDB: 'ICGFRONT', tariffQuery: 'SELECT * FROM TARIFASVENTA' }
   });
   
-  const [selectedTariff, setSelectedTariff] = useState(1);
-  const [selectedTariffName, setSelectedTariffName] = useState('PVP');
+  const [selectedTariff, setSelectedTariff] = useState(null); // Empezamos en null para forzar selección
+  const [selectedTariffName, setSelectedTariffName] = useState('');
+  const [clientName, setClientName] = useState(''); 
   const [generatedSQL, setGeneratedSQL] = useState('');
   const [isExpertMode, setIsExpertMode] = useState(false);
   const [availableTariffs, setAvailableTariffs] = useState([]);
@@ -407,26 +407,26 @@ const App = () => {
 
   // Generador de SQL
   useEffect(() => {
-    if (step !== 'main' || isExpertMode) return;
+    if (step !== 'main' || isExpertMode || !selectedTariff) return;
     const conf = configs[selectedProgram];
     if (!conf) return;
 
     let template = conf.template.replace(/{TARIFF_ID}/g, selectedTariff);
-    const cleanName = String(selectedTariffName).replace(/'/g, "''").trim();
+    const cleanName = String(selectedTariffName).replace(/'/g, "''").trim() || 'PVP';
     template = template.replace(/'PP PVP'/g, `'PP ${cleanName}'`)
                     .replace(/'PA PVP'/g, `'PA ${cleanName}'`)
                     .replace(/'PM PVP'/g, `'PM ${cleanName}'`);
     setGeneratedSQL(template);
   }, [selectedProgram, selectedTariff, selectedTariffName, isExpertMode, step, configs]);
 
-  // --- LÓGICA DE LIMPIEZA TOTAL ---
   const resetAppSession = () => {
     setDbConfig(prev => ({...prev, password: ''}));
     setAvailableTariffs([]);
     setQueryResults(null);
     setExecutionMessage('');
-    setSelectedTariff(1);
-    setSelectedTariffName('PVP');
+    setSelectedTariff(null);
+    setSelectedTariffName('');
+    setClientName(''); 
   };
 
   const addToHistory = (tariffName) => {
@@ -435,6 +435,7 @@ const App = () => {
       program: selectedProgram,
       programName: configs[selectedProgram].name,
       tariff: tariffName,
+      client: clientName || 'Sin Cliente', 
       date: new Date().toLocaleString(),
       database: dbConfig.database
     };
@@ -443,7 +444,6 @@ const App = () => {
     localStorage.setItem('asisman_export_history', JSON.stringify(updatedHistory));
   };
 
-  // --- LÓGICA VACIAR HISTORIAL ---
   const clearHistory = (scope = 'all') => {
     if (scope === 'all') {
       if (window.confirm("¿Deseas vaciar TODO el historial de búsquedas recientes?")) {
@@ -487,6 +487,9 @@ const App = () => {
   };
 
   const handleExecuteSQL = async () => {
+    // DOBLE COMPROBACIÓN ANTES DE EJECUTAR
+    if (!selectedTariff || !clientName.trim()) return;
+
     setIsExecuting(true);
     setExecutionMessage('');
     try {
@@ -510,10 +513,16 @@ const App = () => {
     const ws = XLSX.utils.json_to_sheet(queryResults);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Datos");
-    XLSX.writeFile(wb, `Export_${selectedProgram}_${selectedTariffName}.xlsx`);
+    
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}`;
+    const cleanClient = (clientName || 'Cliente').trim().replace(/[^a-z0-9]/gi, '_');
+    const cleanTariff = (selectedTariffName || 'Tarifa').trim().replace(/[^a-z0-9]/gi, '_');
+    const fileName = `${cleanClient}_${cleanTariff}_${dateStr}.xlsx`;
+
+    XLSX.writeFile(wb, fileName);
   };
 
-  // --- COMPONENTE HISTORIAL ---
   const RenderHistory = ({ filterByProgram }) => {
     const displayHistory = filterByProgram 
       ? history.filter(item => item.program === selectedProgram).slice(0, 5)
@@ -527,7 +536,7 @@ const App = () => {
           <div className="flex items-center gap-2 text-slate-400">
             <Clock size={16} />
             <h3 className="text-[10px] font-black uppercase tracking-widest">
-              {filterByProgram ? `Búsquedas Recientes: ${configs[selectedProgram].name}` : "Búsquedas Recientes Globales"}
+              {filterByProgram ? `Historial: ${configs[selectedProgram].name}` : "Búsquedas Recientes Globales"}
             </h3>
           </div>
           <button 
@@ -546,13 +555,12 @@ const App = () => {
                   {item.program === 'agora' ? <UtensilsCrossed size={14}/> : <Shirt size={14}/>}
                 </div>
                 <div>
-                  <p className="text-xs font-black text-slate-700 uppercase tracking-tight">{item.tariff}</p>
+                  <p className="text-xs font-black text-slate-700 uppercase tracking-tight">
+                    {item.client} <span className="text-blue-500 mx-1">|</span> {item.tariff}
+                  </p>
                   <p className="text-[9px] text-slate-400 font-bold uppercase">{item.date} • {item.database}</p>
                 </div>
               </div>
-              {!filterByProgram && (
-                 <span className="text-[8px] font-black px-2 py-1 bg-slate-200 text-slate-500 rounded-md uppercase">{item.program}</span>
-              )}
             </div>
           ))}
         </div>
@@ -564,13 +572,11 @@ const App = () => {
 
   if (step === 'selector') {
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4 font-sans">
+      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4 font-sans text-slate-800">
         <div className="max-w-4xl w-full">
           <div className="text-center mb-10">
-            <div className="bg-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-xl">
-              <Database className="text-white w-10 h-10" />
-            </div>
-            <h1 className="text-4xl font-black text-slate-800 uppercase tracking-tighter">Exportardor Asisman</h1>
+            <img src="logo.png" alt="Asisman Logo" className="w-64 mx-auto mb-6 drop-shadow-lg" />
+            <h1 className="text-4xl font-black uppercase tracking-tighter italic">Exportador Asisman</h1>
             <p className="text-slate-500 font-bold uppercase text-xs tracking-widest mt-2 italic">Seleccione el Programa de Destino</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
@@ -579,7 +585,7 @@ const App = () => {
                 <div className="p-6 bg-slate-50 rounded-2xl group-hover:bg-blue-50 mb-4 transition-colors">
                   <conf.icon size={54} className="text-slate-300 group-hover:text-blue-600" />
                 </div>
-                <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">{conf.name}</h2>
+                <h2 className="text-2xl font-black uppercase tracking-tight">{conf.name}</h2>
                 <div className="mt-4 flex items-center gap-2 text-blue-600 font-bold text-xs uppercase opacity-0 group-hover:opacity-100 transition-all">
                     Configurar Conexión <ArrowRight size={16} />
                 </div>
@@ -596,25 +602,25 @@ const App = () => {
 
   if (step === 'login') {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans">
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans text-slate-800">
         <div className="bg-white max-w-md w-full rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200">
           <div className="bg-blue-600 p-8 text-center text-white relative">
             <button onClick={() => { resetAppSession(); setStep('selector'); }} className="absolute left-6 top-8 text-white/50 hover:text-white text-xs font-black uppercase tracking-tighter">Atrás</button>
             <Server className="w-12 h-12 mx-auto mb-3 opacity-90" />
-            <h1 className="text-xl font-black uppercase tracking-tight">Conexión a BD:</h1>
+            <h1 className="text-xl font-black uppercase tracking-tight leading-none">Conexión a BD</h1>
           </div>
           <form onSubmit={handleConnect} className="p-10 space-y-5">
             {connectError && <div className="bg-red-50 text-red-600 p-4 rounded-xl text-[10px] font-black uppercase border border-red-100 text-center">{connectError}</div>}
             <div className="space-y-4">
                 <div className="group border-b-2 border-slate-100 focus-within:border-blue-500 transition-all">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Servidor \ Instancia</label>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Servidor / Instancia</label>
                     <input type="text" className="w-full pb-2 outline-none font-bold text-slate-700 bg-transparent" value={dbConfig.server} onChange={(e) => setDbConfig({...dbConfig, server: e.target.value})} />
                 </div>
                 <div className="group border-b-2 border-slate-100 focus-within:border-blue-500 transition-all">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Nombre Base de Datos</label>
                     <input type="text" className="w-full pb-2 outline-none font-bold text-slate-700 bg-transparent" value={dbConfig.database} onChange={(e) => setDbConfig({...dbConfig, database: e.target.value})} />
                 </div>
-                <div className="grid grid-cols-2 gap-4 font-black">
+                <div className="grid grid-cols-2 gap-4">
                     <div className="border-b-2 border-slate-100">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Usuario</label>
                         <input type="text" className="w-full pb-2 outline-none font-bold text-slate-700 bg-transparent" value={dbConfig.user} onChange={(e) => setDbConfig({...dbConfig, user: e.target.value})} />
@@ -625,21 +631,24 @@ const App = () => {
                     </div>
                 </div>
             </div>
-            <button type="submit" disabled={isConnecting} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black hover:bg-blue-700 shadow-lg shadow-blue-100 uppercase tracking-widest transition-all">
-                {isConnecting ? <Loader2 className="animate-spin mx-auto" /> : "Establecer Conexión"}
+            <button type="submit" disabled={isConnecting} className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black hover:bg-blue-700 shadow-lg shadow-blue-100 uppercase tracking-widest transition-all active:scale-95">
+                {isConnecting ? <Loader2 className="animate-spin mx-auto" /> : "Conectar al Motor"}
             </button>
-            <button type="button" onClick={() => {localStorage.setItem('asisman_sql_config', JSON.stringify({...dbConfig, password: ''})); alert("Preferencias guardadas");}} className="w-full py-2 bg-slate-50 text-slate-400 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-colors"><Save size={12} className="inline mr-1"/> Recordar Datos Servidor</button>
+            <button type="button" onClick={() => {localStorage.setItem('asisman_sql_config', JSON.stringify({...dbConfig, password: ''})); alert("Preferencias guardadas");}} className="w-full py-2 bg-slate-50 text-slate-400 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-colors border-2 border-dashed"><Save size={12} className="inline mr-1"/> Recordar Datos Servidor</button>
           </form>
         </div>
       </div>
     );
   }
 
+  // --- LÓGICA BOTÓN EJECUTAR ---
+  const canExecute = selectedTariff !== null && clientName.trim().length > 0;
+
   return (
-    <div className="min-h-screen bg-slate-50 p-6 font-sans">
+    <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-800">
       <header className="max-w-7xl mx-auto mb-8 flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2 font-black text-slate-800 uppercase text-xs">
+          <div className="flex items-center gap-2 font-black uppercase text-xs">
             <Server size={18} className="text-blue-600" /> {dbConfig.server} <span className="text-slate-300">/</span> {dbConfig.database}
           </div>
           <div className="flex items-center gap-2 px-4 py-1.5 bg-green-50 rounded-full border border-green-200">
@@ -651,15 +660,18 @@ const App = () => {
           </div>
         </div>
         <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest italic">
+            <div className="flex items-center gap-2 px-3 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest italic shadow-md">
                 {selectedProgram === 'agora' ? <UtensilsCrossed size={12}/> : <Shirt size={12}/>} {selectedProgram}
             </div>
+            <img src="logoPequeno.ico" alt="Mini Logo" className="w-6 h-6 object-contain" />
             <button onClick={() => { resetAppSession(); setStep('selector'); }} className="text-red-600 font-black px-4 py-2 hover:bg-red-50 rounded-xl text-[10px] tracking-widest uppercase italic">Cerrar Sesión</button>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto grid grid-cols-12 gap-8">
         <div className="col-span-4 space-y-6">
+          
+          {/* 1. SELECCIONAR TARIFA */}
           <div className="bg-white p-8 rounded-[2rem] border shadow-sm border-slate-200">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Search size={14}/> 1. Seleccione Tarifa</h2>
@@ -668,32 +680,58 @@ const App = () => {
                     if (res.success) setAvailableTariffs(res.data.map(r => ({ id: r.IDTARIFAV || r.CODTARIFA || 0, nombre: r.DESCRIPCION || r.NOMBRE || 'Tarifa' })));
                 }} className="text-blue-600 text-[10px] font-black px-4 py-2 bg-blue-50 rounded-full hover:bg-blue-100 uppercase transition-all tracking-tighter">BUSCAR</button>
             </div>
-            <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar font-black text-xs">
+            <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar font-black text-[11px] uppercase tracking-tighter">
               {availableTariffs.length > 0 ? availableTariffs.map(t => (
-                <button key={t.id} onClick={() => {setSelectedTariff(t.id); setSelectedTariffName(t.nombre);}} className={`p-4 rounded-xl border text-left transition-all uppercase tracking-tighter ${selectedTariff === t.id ? "bg-blue-600 text-white border-blue-600 shadow-lg" : "bg-white border-slate-100 text-slate-500 hover:border-blue-200"}`}>{t.nombre}</button>
+                <button key={t.id} onClick={() => {setSelectedTariff(t.id); setSelectedTariffName(t.nombre);}} className={`p-4 rounded-xl border-2 text-left transition-all ${selectedTariff === t.id ? "bg-blue-600 text-white border-blue-600 shadow-lg" : "bg-white border-slate-100 text-slate-500 hover:border-blue-200"}`}>{t.nombre}</button>
               )) : (
-                <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
-                  <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest leading-relaxed opacity-50">Pulse el botón<br/>BUSCAR</p>
+                <div className="text-center py-10 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
+                  <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest opacity-50 italic">Cargue las tarifas...</p>
                 </div>
               )}
             </div>
           </div>
 
-          <button onClick={handleExecuteSQL} disabled={isExecuting} className={`w-full py-6 rounded-[2rem] font-black text-white shadow-2xl flex justify-center items-center gap-3 transition-all transform active:scale-95 uppercase tracking-widest ${isExecuting ? 'bg-slate-400' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'}`}>
-            {isExecuting ? <Loader2 className="animate-spin mx-auto" /> : <><Play fill="currentColor" size={20}/> Ejecutar SQL</>}
+          {/* 2. NOMBRE DEL CLIENTE */}
+          <div className={`bg-white p-8 rounded-[2.5rem] border-2 shadow-sm transition-all duration-500 ${clientName.trim() ? 'border-green-200 bg-green-50/10' : 'border-slate-100'}`}>
+             <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4"><Tag size={14}/> 2. Nombre del Cliente</h2>
+             <input 
+                type="text" 
+                className="w-full p-4 bg-white border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 font-black text-xs uppercase tracking-tight transition-all shadow-inner text-slate-800"
+                placeholder="ESCRIBA EL CLIENTE..."
+                value={clientName}
+                autoComplete="off"
+                onChange={(e) => setClientName(e.target.value)}
+                onMouseDown={(e) => e.stopPropagation()} 
+             />
+             {!clientName.trim() && <p className="mt-2 text-[8px] text-amber-500 font-black uppercase tracking-tighter animate-pulse">Campo Obligatorio para Exportar</p>}
+          </div>
+
+          {/* BOTÓN EJECUTAR CON VALIDACIÓN */}
+          <button 
+            onClick={handleExecuteSQL} 
+            disabled={isExecuting || !canExecute} 
+            className={`w-full py-6 rounded-[2rem] font-black text-white shadow-2xl flex justify-center items-center gap-3 transition-all transform active:scale-95 uppercase tracking-widest ${
+                isExecuting || !canExecute 
+                ? 'bg-slate-300 cursor-not-allowed grayscale' 
+                : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'
+            }`}
+          >
+            {isExecuting ? <Loader2 className="animate-spin mx-auto" /> : (
+                <>{canExecute ? <Play fill="currentColor" size={20}/> : <LockIcon size={20}/>} {canExecute ? 'Ejecutar SQL' : 'Bloqueado'}</>
+            )}
           </button>
         </div>
 
         <div className="col-span-8 space-y-6">
           <div className="bg-slate-900 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col h-[320px] border-8 border-slate-800">
             <div className="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center">
-                <div className="flex items-center gap-2 text-white font-mono text-[10px] font-black uppercase tracking-widest"><Code size={16} className="text-blue-400" /> Script SQL Preparado</div>
-                <button onClick={() => setIsExpertMode(!isExpertMode)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase flex items-center gap-2 transition-all ${isExpertMode ? "bg-orange-500 text-white shadow-lg" : "bg-slate-700 text-slate-400"}`}>
+                <div className="flex items-center gap-2 text-white font-mono text-[10px] font-black uppercase tracking-widest"><Code size={16} className="text-blue-400" /> Script SQL Generado</div>
+                <button onClick={() => setIsExpertMode(!isExpertMode)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase flex items-center gap-2 transition-all ${isExpertMode ? "bg-orange-500 text-white shadow-lg" : "bg-slate-700 text-slate-400 hover:bg-slate-600"}`}>
                     {isExpertMode ? <Unlock size={14}/> : <LockIcon size={14}/>} {isExpertMode ? 'Modo Experto' : 'Solo Lectura'}
                 </button>
             </div>
             <textarea 
-                className={`flex-1 p-8 font-mono text-[11px] outline-none resize-none transition-all leading-relaxed ${isExpertMode ? "bg-slate-800 text-white" : "bg-slate-900 text-emerald-400 opacity-80"}`}
+                className={`flex-1 p-8 font-mono text-[11px] outline-none resize-none transition-all leading-relaxed ${isExpertMode ? "bg-slate-800 text-white shadow-inner" : "bg-slate-900 text-emerald-400 opacity-80"}`}
                 value={generatedSQL}
                 readOnly={!isExpertMode}
                 onChange={(e) => isExpertMode && setGeneratedSQL(e.target.value)}
@@ -702,16 +740,19 @@ const App = () => {
           </div>
           
           {executionMessage && (
-            <div className="p-5 bg-blue-600 text-white rounded-2xl text-[10px] font-black flex items-center gap-3 uppercase tracking-widest shadow-xl shadow-blue-100 animate-in fade-in">
+            <div className="p-5 bg-blue-600 text-white rounded-2xl text-[10px] font-black flex items-center gap-3 uppercase tracking-widest shadow-xl animate-in fade-in">
               <CheckCircle size={20}/> {executionMessage}
             </div>
           )}
 
           {queryResults && (
-            <div className="bg-white rounded-[2rem] border shadow-2xl overflow-hidden border-slate-200">
-              <div className="p-5 border-b flex justify-between items-center bg-slate-50">
-                <span className="font-black text-slate-700 text-xs uppercase tracking-widest flex items-center gap-2"><TableIcon size={18} className="text-blue-600"/> Resultados Obtenidos ({queryResults.length})</span>
-                <button onClick={handleExportExcel} className="bg-emerald-600 text-white px-6 py-3 rounded-xl text-[10px] font-black flex items-center gap-2 hover:bg-emerald-700 uppercase tracking-widest transition-all shadow-md"><FileSpreadsheet size={16}/> Generar Excel</button>
+            <div className="bg-white rounded-[2.5rem] border shadow-2xl overflow-hidden border-slate-200">
+              <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                <div className="flex flex-col">
+                    <span className="font-black text-slate-800 text-xs uppercase tracking-widest flex items-center gap-2"><TableIcon size={18} className="text-blue-600"/> Resultados ({queryResults.length})</span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase mt-1">Exportación para: {clientName || 'Sin Cliente'}</span>
+                </div>
+                <button onClick={handleExportExcel} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl text-xs font-black flex items-center gap-3 hover:bg-emerald-700 shadow-xl transition-all active:scale-95 uppercase tracking-widest shadow-emerald-100"><FileSpreadsheet size={20}/> Generar Excel</button>
               </div>
               <div className="overflow-x-auto max-h-[400px] custom-scrollbar font-bold">
                 <table className="w-full text-[10px] text-left border-collapse">
@@ -727,10 +768,10 @@ const App = () => {
                   </tbody>
                 </table>
               </div>
+              {queryResults.length > 50 && <div className="p-4 bg-slate-50 text-center text-[10px] text-slate-400 font-black border-t uppercase tracking-[0.2em] italic">Previsualización parcial. El Excel contiene la data completa.</div>}
             </div>
           )}
 
-          {/* HISTORIAL FILTRADO AL FINAL */}
           <RenderHistory filterByProgram={true} />
         </div>
       </div>

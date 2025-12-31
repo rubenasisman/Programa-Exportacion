@@ -9,7 +9,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: "Gestor de Precios - Exportación ICG",
+    title: "Gestor de Exportaciones Asisman",
+    icon: path.join(__dirname, 'public/logoPequeno.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
