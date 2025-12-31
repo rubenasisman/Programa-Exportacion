@@ -1,0 +1,70 @@
+GESTOR DE PRECIOS - EXPORTACIÓN ICG / ÁGORA
+
+=============================================
+
+Este documento explica cómo instalar y ejecutar la aplicación de escritorio para conectar con tu base de datos SQL Server y exportar datos a Excel.
+
+1. REQUISITOS PREVIOS
+
+Antes de empezar, necesitas instalar Node.js (el motor que hace funcionar el programa).
+
+Descárgalo aquí: https://nodejs.org/ (Descarga la versión "LTS").
+
+Instálalo pulsando "Siguiente" a todo.
+
+2. ESTRUCTURA DE CARPETAS
+
+Asegúrate de haber guardado los 5 archivos que te generé en la siguiente estructura exacta dentro de una carpeta (ej: "GestorPrecios"):
+
+GestorPrecios/
+│
+├── package.json      (Archivo de configuración)
+├── main.js           (Archivo del sistema - Backend)
+├── preload.js        (Archivo de seguridad)
+├── LEEME.txt         (Este archivo)
+│
+├── public/           (Carpeta nueva)
+│   └── index.html    (Archivo base web)
+│
+└── src/              (Carpeta nueva)
+└── App.jsx       (Archivo con el código del programa)
+
+3. INSTALACIÓN (Solo se hace una vez)
+
+Abre la carpeta GestorPrecios.
+
+Haz clic derecho en un espacio vacío y selecciona "Abrir en Terminal" (o abre PowerShell y navega hasta la carpeta).
+
+Escribe el siguiente comando y pulsa ENTER:
+
+npm install
+
+Esto descargará las librerías necesarias (Electron, conector SQL, Excel, etc). Tardará unos minutos.
+
+4. CÓMO EJECUTAR EL PROGRAMA
+
+Para abrir la aplicación y usarla:
+
+En la misma terminal, escribe:
+
+npm start
+
+Se abrirá una ventana de programa real.
+
+5. CÓMO CREAR EL INSTALADOR (.exe)
+
+Si quieres generar un archivo instalable para llevártelo a otro ordenador:
+
+En la terminal, escribe:
+
+npm run dist
+
+Cuando termine, se creará una carpeta llamada dist dentro de tu carpeta. Ahí encontrarás el instalador .exe.
+
+SOLUCIÓN DE PROBLEMAS COMUNES:
+
+Error "npm no se reconoce": Reinicia el ordenador tras instalar Node.js.
+
+Error de conexión SQL: Asegúrate de que en el programa escribes bien el servidor (ej: "localhost\SQLEXPRESS" o el nombre de tu servidor ICG) y que el usuario "sa" tiene la contraseña correcta.
+
+Error "Protocolo TCP/IP": Si es SQL Express, abre el "Administrador de configuración de SQL Server" y habilita el protocolo TCP/IP.
