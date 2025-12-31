@@ -1,13 +1,13 @@
 {
-  "name": "gestor-precios-icg-agora",
+  "name": "programa-exportaciones-asisman",
   "version": "1.0.0",
-  "description": "Gestor de Exportación SQL Optimizado",
+  "description": "Gestor de Exportación de Bases de Datos por SQL desde ICG a Ágora o Stockagile",
   "main": "main.js",
   "scripts": {
     "start": "webpack --mode development && electron .",
     "dist": "webpack --mode production && electron-builder"
   },
-  "author": "Tu Nombre",
+  "author": "Rubén Aparicio Robles",
   "license": "ISC",
   "dependencies": {
     "react": "^18.2.0",
