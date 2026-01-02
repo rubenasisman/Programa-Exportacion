@@ -529,7 +529,7 @@ const App = () => {
     <footer className="max-w-7xl mx-auto w-full mt-auto py-6 text-center border-t border-slate-200/60">
         <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.5em] flex items-center justify-center gap-2">
           <Terminal size={12} className="text-blue-500" />
-          Software diseñado y programado por [Tu Nombre] • © 2025 Asisman
+          Software diseñado y programado por Rubén Aparicio Robles • © 2025 Asisman
         </p>
     </footer>
   );
