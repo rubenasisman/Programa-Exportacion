@@ -622,7 +622,7 @@ const App = () => {
             <div className="bg-blue-600 p-8 text-center text-white relative">
               <button onClick={() => { resetAppSession(); setStep('selector'); }} className="absolute left-6 top-8 text-white/50 hover:text-white text-xs font-black uppercase tracking-tighter">Atrás</button>
               <Server className="w-12 h-12 mx-auto mb-3 opacity-90" />
-              <h1 className="text-xl font-black uppercase tracking-tight leading-none">Acceso SQL Motor</h1>
+              <h1 className="text-xl font-black uppercase tracking-tight leading-none">Conexión SQL</h1>
             </div>
             <form onSubmit={handleConnect} className="p-10 space-y-5">
               {connectError && <div className="bg-red-50 text-red-600 p-4 rounded-xl text-[10px] font-black uppercase border border-red-100 text-center">{connectError}</div>}
